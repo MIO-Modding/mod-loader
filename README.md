@@ -1,1 +1,4 @@
-# mod-loader
+# Mod Loader
+A WIP Mod Loader for MIO
+
+MEANT TO BE USED WITH v0.1.0 OF MODDING API!! MODS WITH OLDER VERSIONS WILL NOT WORK!!
