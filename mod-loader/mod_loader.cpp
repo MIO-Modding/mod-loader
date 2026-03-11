@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <dwmapi.h>
+#include <string>
 
 bool IsTargetExecutable() {
 	char path[MAX_PATH];
@@ -15,6 +16,16 @@ bool IsTargetExecutable() {
 
 	// Check if this is MIO.exe (case-insensitive)
 	return _stricmp(exeName, "MIO.exe") == 0;
+}
+//Stops double running of the loader when the exe is ran directly instead of from steam
+bool IsCorrectRun() {
+	std::wstring wstr = std::wstring(GetCommandLineW());
+	std::wstring sub = wstr.substr(1, wstr.substr(1).find('"'));
+	std::wstring mioExeName = L"mio.exe";
+	if (wstr.find('"') == 0 && sub.substr(sub.length() - mioExeName.length(), mioExeName.length()) == mioExeName) {
+		return false;
+	}
+	return true;
 }
 
 void LogModLoaderMessage(const char* message) {

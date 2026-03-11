@@ -1,5 +1,4 @@
 // dllmain.cpp : Defines the entry point for the DLL application.
-//#include "pch.h"
 #include "mod_loader.h"
 #include <windows.h>
 
@@ -274,12 +273,14 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 	switch (ul_reason_for_call)
 	{
 	case DLL_PROCESS_ATTACH:
-		if (!IsTargetExecutable()) {
-			return true;
+        if (!IsTargetExecutable()) {
+            return true;
+        }
+        if (!IsCorrectRun()) {
+            return true;
+        }
 
-		}
-
-		CreateThread(nullptr, 0, (LPTHREAD_START_ROUTINE)InitializeModLoader, hModule, 0, nullptr);
+        InitializeModLoader();
 	case DLL_THREAD_ATTACH:
 	case DLL_THREAD_DETACH:
 	case DLL_PROCESS_DETACH:

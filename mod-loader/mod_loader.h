@@ -17,6 +17,7 @@ inline Version make_APIVersion(int major, int minor, int patch) {
 extern "C" {
 	void InitializeModLoader();
 	bool IsTargetExecutable();
+	bool IsCorrectRun();
 	void DisableDWM();
 	void LoadMods();
 	void LogModLoaderMessage(const char* message);
