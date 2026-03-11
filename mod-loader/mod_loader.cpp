@@ -3,6 +3,12 @@
 #include <stdio.h>
 #include <dwmapi.h>
 #include <string>
+#include <nlohmann/json.hpp>
+#include <filesystem>
+#include <iostream>
+#include <fstream>
+
+namespace fs = std::filesystem;
 
 bool IsTargetExecutable() {
 	char path[MAX_PATH];
@@ -72,58 +78,83 @@ void DisableDWM() {
 
 	RegCloseKey(hKey);
 }
-
 void LoadMods() {
 	LogModLoaderMessage("Loading mods from ./mods/ directory...");
 
-	WIN32_FIND_DATAA findData;
-	HANDLE hFind = FindFirstFileA(".\\mods\\*.dll", &findData);
+	class ModLoadInfo {
+	public:
+		fs::path dllPath;
+		std::string id;
+		std::string name;
+		std::vector<std::string> dependencies;
+		ModLoadInfo() {}
+		ModLoadInfo(fs::path dllPath, std::string id, std::string name, std::vector<std::string> dependencies) {
+			this->dllPath = dllPath;
+			this->id = id;
+			this->name = name;
+			this->dependencies = dependencies;
+		}
+		void Load(std::map<std::string, ModLoadInfo>* modLoadInfos, std::vector<std::string>* loadedMods, std::vector<std::string> loadStack) {
+			loadStack.push_back(id);
+			for (std::string i : dependencies) {
+				if (!std::count(loadedMods->begin(), loadedMods->end(), i)) {
+					modLoadInfos->at(i).Load(modLoadInfos, loadedMods, loadStack);
+				}
+			}
+			std::erase(loadStack, id);
+			loadedMods->push_back(id);
+			HMODULE hMod = LoadLibraryA(dllPath.string().c_str());
+			if (hMod) {
+				LogModLoaderMessage(std::string("Loaded mod: " + id).c_str());
 
-	if (hFind == INVALID_HANDLE_VALUE) {
-		LogModLoaderMessage("No mods found or mods directory doesn't exist.");
-		return;
-	}
-
-	int modCount = 0;
-	do {
-		char modPath[MAX_PATH];
-		sprintf_s(modPath, ".\\mods\\%s", findData.cFileName);
-
-		HMODULE hMod = LoadLibraryA(modPath);
-		if (hMod) {
-			char msg[256];
-			sprintf_s(msg, "Loaded mod: %s", findData.cFileName);
-			LogModLoaderMessage(msg);
-
-			// Try to call the mod's initialization function
-			typedef void (*ModInitFunc)();
-			ModInitFunc modInit = (ModInitFunc)GetProcAddress(hMod, "ModInit");
-			if (modInit) {
-				sprintf_s(msg, "Initializing %s...", findData.cFileName);
-				LogModLoaderMessage(msg);
-				modInit();
+				// Try to call the mod's initialization function
+				typedef void (*ModInitFunc)();
+				ModInitFunc modInit = (ModInitFunc)GetProcAddress(hMod, "ModInit");
+				if (modInit) {
+					LogModLoaderMessage(std::string("Initializing " + id + "...").c_str());
+					modInit();
+				}
+				else {
+					LogModLoaderMessage(std::string("Warning: " + id + " has no ModInit() function").c_str());
+				}
 			}
 			else {
-				sprintf_s(msg, "Warning: %s has no ModInit() function",
-					findData.cFileName);
-				LogModLoaderMessage(msg);
+				LogModLoaderMessage(std::string("Failed to load: " + id + " (Error: " + std::to_string(GetLastError()) + ")").c_str());
 			}
-
-			modCount++;
 		}
-		else {
-			char msg[256];
-			sprintf_s(msg, "Failed to load: %s (Error: %d)", findData.cFileName,
-				GetLastError());
-			LogModLoaderMessage(msg);
+	};
+
+	std::map<std::string, ModLoadInfo> dllsToLoad;
+	for (fs::directory_entry i : fs::directory_iterator(".\\mods")) {
+		if (fs::is_directory(i.status())) {
+			fs::path dirPath = i.path();
+			fs::path modJsonPath = dirPath / fs::path("mod.json");
+			std::ifstream file(modJsonPath);
+			nlohmann::json data = nlohmann::json::parse(file);
+			file.close();
+			std::string id = data["id"].get<std::string>();
+			std::string name = data["name"].get<std::string>();
+			fs::path mainDll = dirPath / fs::path(data["main"].get<std::string>());
+			std::vector<std::string> dependencies = data["dependencies"].get<std::vector<std::string>>();
+			dllsToLoad[id] = ModLoadInfo(mainDll, id, name, dependencies);
 		}
-	} while (FindNextFileA(hFind, &findData));
+	}
+	std::vector<std::string> loadedMods;
+	std::vector<ModLoadInfo> rootDlls;
+	for (auto& i : dllsToLoad) {
+		bool anyDependants = false;
+		for (auto& j : dllsToLoad) {
+			if (std::count(j.second.dependencies.begin(), j.second.dependencies.end(), i.second.id)) {
+				anyDependants = true;
+				break;
+			}
+		}
+		if (!anyDependants) {
+			i.second.Load(&dllsToLoad, &loadedMods, std::vector<std::string>());
+		}
+	}
 
-	FindClose(hFind);
-
-	char msg[256];
-	sprintf_s(msg, "Loaded %d mod(s)", modCount);
-	LogModLoaderMessage(msg);
+	LogModLoaderMessage(std::string("Loaded " + std::to_string(loadedMods.size()) + " mod(s)").c_str());
 }
 
 void InitializeModLoader() {
