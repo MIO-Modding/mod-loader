@@ -115,7 +115,7 @@ void LoadMods() {
 				ModInitFunc modInit = (ModInitFunc)GetProcAddress(hMod, "ModInit");
 				if (modInit) {
 					LogModLoaderMessage(std::string("Initializing " + id + "...").c_str());
-					modInit(id.data());
+					modInit(_strdup(id.data()));
 				}
 				else {
 					LogModLoaderMessage(std::string("Warning: " + id + " has no ModInit() function").c_str());
