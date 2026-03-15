@@ -25,6 +25,9 @@ bool IsTargetExecutable() {
 }
 //Stops double running of the loader when the exe is ran directly instead of from steam
 bool IsCorrectRun() {
+	//Disabling this method, Apparently it doesnt work on windows 11!
+	return true;
+
 	std::wstring wstr = std::wstring(GetCommandLineW());
 	std::wstring sub = wstr.substr(1, wstr.substr(1).find('"'));
 	std::wstring mioExeName = L"mio.exe";
