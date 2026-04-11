@@ -1,0 +1,32 @@
+name: Build Check
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+
+jobs:
+  build-check:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+
+      - name: Integrate vcpkg with MSBuild
+        run: vcpkg integrate install
+        shell: cmd
+
+      - name: Build DLL
+        run: msbuild mod-loader.sln /p:Configuration=Release /p:Platform=x64
+        shell: pwsh
