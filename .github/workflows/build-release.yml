@@ -1,0 +1,46 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-dll:
+    permissions:
+      contents: write
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+
+      - name: Integrate vcpkg with MSBuild
+        run: vcpkg integrate install
+        shell: cmd
+
+      - name: Build DLL
+        run: msbuild mod-loader.sln /p:Configuration=Release /p:Platform=x64
+        shell: pwsh
+
+      - name: Upload artifacts (for testing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            x64/Release/winhttp.dll
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            x64/Release/winhttp.dll
