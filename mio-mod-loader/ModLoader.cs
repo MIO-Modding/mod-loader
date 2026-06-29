@@ -2,6 +2,7 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
+using System.Text.Json.Nodes;
 
 namespace MioModLoader
 {
@@ -50,13 +51,72 @@ namespace MioModLoader
 
             LogLoaderMessage("Loading mods from " + modsPath);
 
-            List<Mod> mods = new List<Mod>();
+            Dictionary<string, (string assemblyPath, string modId, string modName, string[] dependencies)> modLoadInfo = new Dictionary<string, (string assemblyPath, string modId, string modName, string[] dependencies)>();
+
             List<Assembly> assemblies = new List<Assembly>();
             foreach (string i in Directory.GetDirectories(modsPath))
             {
-                foreach (string j in Directory.GetFiles(i, "*.dll"))
+                string modInfo = Path.Combine(i, "mod.json");
+                if (File.Exists(modInfo))
                 {
-                    string dllPath = new FileInfo(j).FullName;
+                    var json = JsonObject.Parse(File.ReadAllText(modInfo));
+                    if (json is JsonObject obj)
+                    {
+                        string id = obj["id"].GetValue<string>();
+                        string name = obj["name"].GetValue<string>();
+                        string main = new FileInfo(Path.Combine(i, obj["main"].GetValue<string>())).FullName;
+                        List<string> dependencies = new List<string>();
+                        foreach (var j in obj["dependencies"].AsArray())
+                        {
+                            dependencies.Add(j.GetValue<string>());
+                        }
+                        modLoadInfo.Add(id, (main, id, name, dependencies.ToArray()));
+                    }
+                }
+            }
+            Dictionary<string, string> modsMissingDependencies = new Dictionary<string, string>();
+            foreach (var i in modLoadInfo)
+            {
+                List<string> missing = new List<string>();
+                foreach (var j in i.Value.dependencies)
+                {
+                    if (!modLoadInfo.ContainsKey(j))
+                    {
+                        missing.Add(j);
+                    }
+                }
+                if (missing.Count > 0)
+                {
+                    modsMissingDependencies.Add(i.Key, string.Join(", ", missing));
+                }
+            }
+            if (modsMissingDependencies.Count > 0)
+            {
+                string exceptionStr = "Mods are missing dependencies:";
+                foreach (var i in modsMissingDependencies)
+                {
+                    exceptionStr += $"\n{i.Key} - {i.Value}";
+                }
+                throw new Exception(exceptionStr);
+            }
+            List<Mod> loadedMods = new List<Mod>();
+            List<string> rootMods = new List<string>();
+            Dictionary<string, List<string>> dependantDict = new Dictionary<string, List<string>>();
+            foreach (var i in modLoadInfo)
+            {
+                List<string> dependants = modLoadInfo.Where((j) => j.Value.dependencies.Contains(i.Key)).Select((j) => j.Key).ToList();
+                if (i.Value.dependencies.Length <= 0)
+                {
+                    rootMods.Add(i.Key);
+                }
+                dependantDict.Add(i.Key, dependants);
+            }
+            void LoadDependants(List<string> mods)
+            {
+                foreach (var i in mods)
+                {
+                    LogLoaderMessage($"Loading Mod {i}");
+                    string dllPath = modLoadInfo[i].assemblyPath;
                     var context = new AssemblyLoadContext(name: Path.GetFileNameWithoutExtension(dllPath), isCollectible: true);
                     context.Resolving += (alc, assemblyName) =>
                     {
@@ -76,40 +136,17 @@ namespace MioModLoader
                         }
                         return null;
                     };
-                    assemblies.Add(context.LoadFromAssemblyPath(dllPath));
-                }
-            }
-            foreach (var i in assemblies)
-            {
-                foreach (var type in i.DefinedTypes.Where(type => !type.IsAbstract && type.IsSubclassOf(typeof(Mod))).ToList())
-                {
-                    Mod? mod = Activator.CreateInstance(type, i) as Mod;
-                    if (mod != null)
+                    Assembly assembly = context.LoadFromAssemblyPath(dllPath);
+                    assemblies.Add(assembly);
+                    foreach (var type in assembly.DefinedTypes.Where(type => !type.IsAbstract && type.IsSubclassOf(typeof(Mod))).ToList())
                     {
-                        mods.Add(mod);
+                        Mod? mod = Activator.CreateInstance(type, assembly, modLoadInfo[i].modName, modLoadInfo[i].modId, modLoadInfo[i].dependencies) as Mod;
+                        if (mod != null)
+                        {
+                            loadedMods.Add(mod);
+                            mod.Initialize();
+                        }
                     }
-                }
-            }
-            List<Mod> loadedMods = new List<Mod>();
-            List<Mod> rootMods = new List<Mod>();
-            Dictionary<Mod, List<Mod>> dependantDict = new Dictionary<Mod, List<Mod>>();
-            foreach (var i in mods)
-            {
-                List<Mod> dependants = mods.Where((j) => j.GetDependencies().Contains(i.GetId())).ToList();
-                if (dependants.Count <= 0)
-                {
-                    rootMods.Add(i);
-                } else
-                {
-                    dependantDict.Add(i, dependants);
-                }
-            }
-            void LoadDependants(List<Mod> mods)
-            {
-                foreach (var i in mods)
-                {
-                    i.Initialize();
-                    loadedMods.Add(i);
                     if (dependantDict.ContainsKey(i))
                     {
                         LoadDependants(dependantDict[i]);

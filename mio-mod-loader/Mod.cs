@@ -10,25 +10,28 @@ namespace MioModLoader
     public abstract class Mod
     {
         public Assembly assembly;
-        public Mod(Assembly assembly)
+        public string name;
+        public string id;
+        public string[] dependencies;
+        public Mod(Assembly assembly, string name, string id, string[] dependencies)
         {
             this.assembly = assembly;
+            this.name = name;
+            this.id = id;
+            this.dependencies = dependencies;
         }
-        public abstract string GetId();
-        public abstract string GetName();
-        public abstract string[] GetDependencies();
         public abstract void Initialize();
         public string GetModFolderPath()
         {
-            return Path.Combine(ModLoader.modsPath, GetId());
+            return Path.Combine(ModLoader.modsPath, id);
         }
         public string GetModConfigPath()
         {
-            return Path.Combine(ModLoader.modsConfigPath, GetId());
+            return Path.Combine(ModLoader.modsConfigPath, id);
         }
         public void LogMessage(string message)
         {
-            ModLoader.LogMessage($"[{GetId()}] {message}");
+            ModLoader.LogMessage($"[{id}] {message}");
         }
     }
 }
