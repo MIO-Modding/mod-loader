@@ -19,7 +19,6 @@ extern "C" {
 	bool IsTargetExecutable();
 	bool IsCorrectRun();
 	void DisableDWM();
-	void LoadMods();
 	void LogModLoaderMessage(const char* message);
 	Version GetModLoaderVersion();
 }
