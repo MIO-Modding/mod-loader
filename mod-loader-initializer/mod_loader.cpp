@@ -146,6 +146,11 @@ void InitializeModLoader() {
 	// Disable DWM for GUI mods (needed on some systems)
 	DisableDWM();
 
+	HMODULE hModule = GetModuleHandleA("mio.exe");
+	if (!hModule) {
+		LogModLoaderMessage("ERROR: Failed to get mio.exe module handle!");
+		return;
+	}
 
 
 	fs::path configPath = fs::current_path() / fs::path("mio-mod-loader/MioModLoader.runtimeconfig.json");
@@ -176,7 +181,7 @@ void InitializeModLoader() {
 	}
 
 	auto loadAssemblyAndGetFunctionPointer = (load_assembly_and_get_function_pointer_fn)loadAssembly;
-	void(*modInit)(void*, void*, void*) = nullptr;
+	void(*modInit)(void*, void*, void*, void*) = nullptr;
 
 	// 3. Resolve your specific C# entry point
 	rc = loadAssemblyAndGetFunctionPointer(
@@ -194,6 +199,6 @@ void InitializeModLoader() {
 		return;
 	}
 
-	modInit((void*)modsPath.c_str(), (void*)modsConfigPath.c_str(), &LogMessage);
+	modInit((void*)modsPath.c_str(), (void*)modsConfigPath.c_str(), &LogMessage, hModule);
 	closeFptr(ctx);
 }

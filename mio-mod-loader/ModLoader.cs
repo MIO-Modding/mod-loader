@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Text.Json.Nodes;
@@ -16,11 +17,13 @@ namespace MioModLoader
         public static List<Mod> loadedMods = new List<Mod>();
         public static string modsPath = "./modconfig";
         public static string modsConfigPath = "./mods";
+        public static long mioMemoryAddress;
         [UnmanagedCallersOnly(EntryPoint = "LoadMods", CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
-        public static void LoadModsPointers(IntPtr modsPathPtr, IntPtr modsConfigPathPtr, IntPtr logMessageMethod)
+        public static void LoadModsPointers(IntPtr modsPathPtr, IntPtr modsConfigPathPtr, IntPtr logMessageMethod, IntPtr mioMemoryAddress)
         {
             try
             {
+                ModLoader.mioMemoryAddress = mioMemoryAddress;
                 _cachedLogMessageMethod = Marshal.GetDelegateForFunctionPointer<LogMessageDelegate>(logMessageMethod);
 
                 string path = Marshal.PtrToStringAnsi(modsPathPtr) ?? modsPath;

@@ -135,7 +135,11 @@
       <OutputFile>$(OutDir)winhttp.dll</OutputFile>
     </Link>
   </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <PropertyGroup>
+    <DotNet8NativeDir>$([System.IO.Directory]::GetDirectories("C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Host.win-x64", "8.0.*"))</DotNet8NativeDir>
+    <FirstDotNetDir>$(DotNet8NativeDir.Split(';')[0])</FirstDotNetDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -148,7 +152,7 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalUsingDirectories>%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
-      <AdditionalIncludeDirectories>C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Host.win-x64\8.0.23\runtimes\win-x64\native</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(FirstDotNetDir)\runtimes\win-x64\native</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -156,7 +160,7 @@
       <EnableUAC>false</EnableUAC>
       <OutputFile>$(OutDir)winhttp.dll</OutputFile>
       <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);libnethost.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Host.win-x64\8.0.23\runtimes\win-x64\native</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(FirstDotNetDir)\runtimes\win-x64\native</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
