@@ -7,4 +7,9 @@
     <Nullable>enable</Nullable>
     <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
   </PropertyGroup>
+  <ItemGroup>
+    <RuntimeHostConfigurationOption 
+        Include="System.Threading.ThreadPool.UseWindowsThreadPool" 
+        Value="true" />
+  </ItemGroup>
 </Project>
