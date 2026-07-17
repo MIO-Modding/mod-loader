@@ -29,6 +29,7 @@ namespace MioModLoader
                 string path = Marshal.PtrToStringAnsi(modsPathPtr) ?? modsPath;
                 string config = Marshal.PtrToStringAnsi(modsConfigPathPtr) ?? modsConfigPath;
 
+                LoadLibraries();
                 LoadMods(path, config);
             }
             catch (Exception ex)
@@ -46,6 +47,17 @@ namespace MioModLoader
         public static void LogLoaderMessage(string message)
         {
             LogMessage($"[LOADER] {message}");
+        }
+        private static void LoadLibraries()
+        {
+            string modFolder = new FileInfo(Assembly.GetExecutingAssembly().Location!).DirectoryName!;
+            string nativeFolder = Path.Combine(modFolder, "runtimes", "win-x64", "native");
+
+            string[] natives = ["asmjit", "asmtk", "Zydis", "PolyHook_2"];
+            foreach (var i in natives)
+            {
+                NativeLibrary.TryLoad(Path.Combine(nativeFolder, i + ".dll"), out _);
+            }
         }
         public static void LoadMods(string modsPath, string modsConfigPath)
         {
@@ -120,7 +132,7 @@ namespace MioModLoader
                 {
                     LogLoaderMessage($"Loading Mod {i}");
                     string dllPath = modLoadInfo[i].assemblyPath;
-                    var context = new AssemblyLoadContext(name: Path.GetFileNameWithoutExtension(dllPath), isCollectible: true);
+                    var context = new AssemblyLoadContext(name: Path.GetFileNameWithoutExtension(dllPath));
                     context.Resolving += (alc, assemblyName) =>
                     {
                         if (assemblyName.Name == "MioModLoader")
@@ -132,12 +144,38 @@ namespace MioModLoader
                         {
                             return assembly;
                         }
-                        string expectedDependencyPath = Path.Combine(Path.GetDirectoryName(dllPath)!, $"{assemblyName.Name}.dll");
+                        string expectedDependencyPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, $"{assemblyName.Name}.dll");
+                        if (File.Exists(expectedDependencyPath))
+                        {
+                            return alc.LoadFromAssemblyPath(expectedDependencyPath);
+                        }
+                        expectedDependencyPath = Path.Combine(Path.GetDirectoryName(dllPath)!, $"{assemblyName.Name}.dll");
                         if (File.Exists(expectedDependencyPath))
                         {
                             return alc.LoadFromAssemblyPath(expectedDependencyPath);
                         }
                         return null;
+                    };
+                    context.ResolvingUnmanagedDll += (assembly, libraryName) =>
+                    {
+                        string modFolder = new FileInfo(assembly.Location!).DirectoryName!;
+                        string nativeFolder = Path.Combine(modFolder, "win-x64", "native");
+                        string expectedDllPath = Path.Combine(nativeFolder, $"{libraryName}.dll");
+
+                        nint handle = nint.Zero;
+                        if (File.Exists(expectedDllPath))
+                        {
+                            NativeLibrary.TryLoad(expectedDllPath, out handle);
+                        }
+
+                        modFolder = new FileInfo(Assembly.GetExecutingAssembly().Location!).DirectoryName!;
+                        nativeFolder = Path.Combine(modFolder, "win-x64", "native");
+                        expectedDllPath = Path.Combine(nativeFolder, $"{libraryName}.dll");
+                        if (File.Exists(expectedDllPath))
+                        {
+                            NativeLibrary.TryLoad(expectedDllPath, out handle);
+                        }
+                        return handle;
                     };
                     Assembly assembly = context.LoadFromAssemblyPath(dllPath);
                     assemblies.Add(assembly);
