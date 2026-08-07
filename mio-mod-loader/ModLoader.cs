@@ -59,6 +59,7 @@ namespace MioModLoader
                 NativeLibrary.TryLoad(Path.Combine(nativeFolder, i + ".dll"), out _);
             }
         }
+        private static Dictionary<string, Assembly> allAssemblies = new Dictionary<string, Assembly>();
         public static void LoadMods(string modsPath, string modsConfigPath)
         {
             ModLoader.modsPath = modsPath;
@@ -144,15 +145,23 @@ namespace MioModLoader
                         {
                             return assembly;
                         }
+                        if (allAssemblies.TryGetValue(assemblyName.Name!, out Assembly? value))
+                        {
+                            return value;
+                        }
                         string expectedDependencyPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, $"{assemblyName.Name}.dll");
                         if (File.Exists(expectedDependencyPath))
                         {
-                            return alc.LoadFromAssemblyPath(expectedDependencyPath);
+                            var result = alc.LoadFromAssemblyPath(expectedDependencyPath);
+                            allAssemblies.Add(assemblyName.Name!, result);
+                            return result;
                         }
                         expectedDependencyPath = Path.Combine(Path.GetDirectoryName(dllPath)!, $"{assemblyName.Name}.dll");
                         if (File.Exists(expectedDependencyPath))
                         {
-                            return alc.LoadFromAssemblyPath(expectedDependencyPath);
+                            var result = alc.LoadFromAssemblyPath(expectedDependencyPath);
+                            allAssemblies.Add(assemblyName.Name!, result);
+                            return result;
                         }
                         return null;
                     };
