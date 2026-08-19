@@ -1,37 +1,31 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Reflection;
 
-namespace MioModLoader
+namespace MioModLoader;
+
+public abstract class Mod
 {
-    public abstract class Mod
-    {
-        public Assembly assembly;
-        public string name;
-        public string id;
-        public string[] dependencies;
-        public Mod(Assembly assembly, string name, string id, string[] dependencies)
-        {
-            this.assembly = assembly;
-            this.name = name;
-            this.id = id;
-            this.dependencies = dependencies;
-        }
-        public abstract void Initialize();
-        public string GetModFolderPath()
-        {
-            return Path.Combine(ModLoader.modsPath, id);
-        }
-        public string GetModConfigPath()
-        {
-            return Path.Combine(ModLoader.modsConfigPath, id);
-        }
-        public void LogMessage(string message)
-        {
-            ModLoader.LogMessage($"[{id}] {message}");
-        }
-    }
+  public Assembly Assembly { get; internal set; }
+  public string Name { get; internal set; }
+  public string Id { get; internal set; }
+  public string[] Dependencies { get; internal set; }
+  public Mod(Assembly assembly, string name, string id, string[] dependencies)
+  {
+    Assembly = assembly;
+    Name = name;
+    Id = id;
+    Dependencies = dependencies;
+  }
+  public abstract void Initialize();
+  public string GetModFolderPath()
+  {
+    return Path.Combine(ModLoader.ModsPath, Id);
+  }
+  public string GetModConfigPath()
+  {
+    return Path.Combine(ModLoader.ModsConfigPath, Id);
+  }
+  public void LogMessage(string message)
+  {
+    ModLoader.LogMessage($"[{Id}] {message}");
+  }
 }
