@@ -6,7 +6,7 @@ namespace MioModLoader;
 [UsedImplicitly(ImplicitUseTargetFlags.WithInheritors)]
 public abstract class ModType
 {
-    public Mod Mod { get; internal set; }
+    public Mod Mod { get; internal set; } = null!; // Set by ModLoader
 
     public virtual bool IsLoadingEnabled => true;
 
