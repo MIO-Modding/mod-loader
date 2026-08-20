@@ -1,5 +1,9 @@
+using JetBrains.Annotations;
+
 namespace MioModLoader;
 
+[PublicAPI]
+[UsedImplicitly(ImplicitUseTargetFlags.WithInheritors)]
 public abstract class ModType
 {
     public Mod Mod { get; internal set; }

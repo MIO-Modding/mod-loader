@@ -1,7 +1,10 @@
-﻿using System.Reflection;
+﻿using JetBrains.Annotations;
+using System.Reflection;
 
 namespace MioModLoader;
 
+[PublicAPI]
+[UsedImplicitly(ImplicitUseTargetFlags.WithInheritors)]
 public class Mod
 {
     public Assembly Assembly { get; internal set; }
