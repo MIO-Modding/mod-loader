@@ -80,15 +80,50 @@ public static class ModLoader
                 continue;
             }
 
-            string id = obj["id"].GetValue<string>();
-            string name = obj["name"].GetValue<string>();
-            string main = new FileInfo(Path.Combine(i, obj["main"].GetValue<string>())).FullName;
-            List<string> dependencies = [];
-            foreach (JsonNode? j in obj["dependencies"].AsArray())
+            if (obj["name"]?.GetValue<string>() is not { } name)
             {
-                dependencies.Add(j.GetValue<string>());
+                LogLoaderMessage($"Mod in {i} is missing a name, skipping");
+                continue;
             }
-            modLoadInfo.Add(id, (main, id, name, dependencies.ToArray()));
+
+            if (obj["id"]?.GetValue<string>() is not { } id)
+            {
+                LogLoaderMessage($"Mod {name} is missing an id, skipping");
+                continue;
+            }
+
+            if (obj["main"]?.GetValue<string>() is not { } mainFile)
+            {
+                LogLoaderMessage($"Mod {name} is missing a main file, skipping");
+                continue;
+            }
+
+            string main = new FileInfo(Path.Combine(i, mainFile)).FullName;
+
+            string[] dependencies = [];
+            bool validDependencies = true;
+            if (obj["dependencies"]?.AsArray() is { Count: > 0 } jsonDependencies)
+            {
+                dependencies = new string[jsonDependencies.Count];
+                for (int index = 0; index < jsonDependencies.Count; index++)
+                {
+                    if (jsonDependencies[index]?.GetValue<string>() is not {} dependency)
+                    {
+                        LogLoaderMessage($"Mod {name} has an invalid dependency at index {index}");
+                        validDependencies = false;
+                        break;
+                    }
+
+                    dependencies[index] = dependency;
+                }
+            }
+
+            if (!validDependencies)
+            {
+                continue;
+            }
+
+            modLoadInfo.Add(id, (main, id, name, dependencies));
         }
         Dictionary<string, string> modsMissingDependencies = [];
         foreach ((string key, (_, _, _, string[] dependencies)) in modLoadInfo)
