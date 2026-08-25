@@ -17,7 +17,7 @@ public class Mod
 
     public string GetModFolderPath()
     {
-        return Path.Combine(ModLoader.ModsPath, Id);
+        return new FileInfo(Assembly.Location!).DirectoryName!;
     }
 
     public string GetModConfigPath()
