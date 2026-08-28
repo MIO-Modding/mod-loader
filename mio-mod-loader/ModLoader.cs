@@ -12,7 +12,7 @@ public static class ModLoader
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate void LogMessageDelegate([MarshalAs(UnmanagedType.LPStr)] string message);
     private static LogMessageDelegate? _cachedLogMessageMethod;
-
+    public static Action<string>? logOverride;
     public static List<Assembly> LoadedAssemblies { get; private set; } = [];
     public static List<Mod> LoadedMods { get; private set; } = [];
     public static string ModsPath { get; private set; } = "./mods";
@@ -39,7 +39,13 @@ public static class ModLoader
     }
     public static void LogMessage(string message)
     {
-        _cachedLogMessageMethod?.Invoke(message);
+        if (logOverride == null)
+        {
+            _cachedLogMessageMethod!.Invoke(message);
+        } else
+        {
+            logOverride.Invoke(message);
+        }
     }
     public static void LogLoaderMessage(string message)
     {
