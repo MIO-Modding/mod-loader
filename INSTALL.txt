@@ -1,0 +1,9 @@
+To install, extract every file within this zip into the MIO local files
+
+After that, place any mods you wish to install in the mods folder
+
+Most mods will require the Mio Modding Api which you can find at https://github.com/MIO-Modding/mio-modding-api
+
+
+Most mods will come in the form of a zip file, Please extract that zip file as a folder into your mods folder, DO NOT EXTRACT THE MODS FILES INTO THE MODS FOLDER DIRECTLY
+The correct folder path to mod files would be MIO/mods/<MODNAME>/<MODFILES> NOT MIO/mods/<MODFILES>

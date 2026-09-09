@@ -364,3 +364,6 @@ FodyWeavers.xsd
 
 # vcpkg
 vcpkg_installed/
+
+# Output
+output/
