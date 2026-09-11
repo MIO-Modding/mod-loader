@@ -7,3 +7,13 @@ Most mods will require the Mio Modding Api which you can find at https://github.
 
 Most mods will come in the form of a zip file, Please extract that zip file as a folder into your mods folder, DO NOT EXTRACT THE MODS FILES INTO THE MODS FOLDER DIRECTLY
 The correct folder path to mod files would be MIO/mods/<MODNAME>/<MODFILES> NOT MIO/mods/<MODFILES>
+
+
+
+------- STEPS ON LINUX ------- (Thanks to @samwell_ii on Discord for these instructions)
+1. Follow all instructions for the Windows install
+2. Set the launch options in steam to
+```
+WINEDLLOVERRIDES="winhttp.dll=n,b" %command%
+```
+3. Install `dotnet8` through Protontricks
