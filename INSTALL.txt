@@ -1,9 +1,77 @@
-To install, extract every file within this zip into the MIO local files
+To install, extract every file within this zip into the MIO
+local files. On a Steam installation this can be found by
+clicking `(Gear Icon) > Manage > Browse Local Files` from
+the Steam Library page for MIO.
 
-After that, place any mods you wish to install in the mods folder
+After that, place any mods you wish to install in a folder
+called mods.
 
-Most mods will require the Mio Modding Api which you can find at https://github.com/MIO-Modding/mio-modding-api
+Most mods will require the Mio Modding Api which you can find
+at https://github.com/MIO-Modding/mio-modding-api
 
 
-Most mods will come in the form of a zip file, Please extract that zip file as a folder into your mods folder, DO NOT EXTRACT THE MODS FILES INTO THE MODS FOLDER DIRECTLY
-The correct folder path to mod files would be MIO/mods/<MODNAME>/<MODFILES> NOT MIO/mods/<MODFILES>
+Most mods will come in the form of a zip file, Please extract
+that zip file as a folder into your mods folder, DO NOT EXTRACT
+THE MODS FILES INTO THE MODS FOLDER DIRECTLY.
+The correct folder path to mod files would be
+MIO/mods/<MODNAME>/<MODFILES> NOT MIO/mods/<MODFILES>.
+
+As an example, here is roughly how the filestructure for
+installing the Mio Mod Loader, Mio Modding Api, and an
+Example Mod ignoring most files native to the MIO install.
+
+MIO
+├── mio-mod-loader
+│   ├── MioBinds.dll
+│   ├── MioModLoader.dll
+│   ├── MioModLoader.runtimeconfig.json
+│   ├── PolyHook2.NET.dll
+│   └── runtimes
+│       └── ...
+├── mods
+│   ├── ExampleMod
+│   │   ├── assets_override.gin
+│   │   ├── ExampleMod.dll
+│   │   ├── localization.json
+│   │   └── mod.json
+│   └── MioModdingApi
+│       ├── MioModdingApi.dll
+│       └── mod.json
+├── mio.exe
+├── INSTALL.txt
+├── winhttp.dll
+└── ...
+
+
+Linux Specific Install Instructions:
+There are two extra steps to installing the mod loader on
+a Linux system.
+
+First, from the Steam Library page for MIO select
+(gear icon) > Properties
+and put the following into the Launch Options line:
+WINEDLLOVERRIDES="winhttp.dll=n,b" %command%
+This ensures that the custom winhttp.dll file included with
+the modloader is actually used when MIO is run.
+
+Secondly, it is necessary to add the missing
+dotnet8 dependencies to the virtual environment used by
+Proton. The simplest way to do this is to use Protontricks,
+a tool for modifying the wineprefix (environment) used by Proton.
+
+To do this first install Protontricks as outlined at
+https://github.com/Matoking/protontricks#usage.
+With Protontricks installed you may install the dotnet
+dependency directly by running:
+
+`protontricks 1672810 dotnet8`
+
+Alternatively, you may use the graphical interface by running
+Protontricks without any arguments, then selecting
+MIO: Memories in Orbit: 1672810 >
+Select the default wineprefix >
+Install a Windows DLL or component >
+check the checkbox by dotnet8
+Once the installation is complete and you are back to
+the menu you selected Install a Windows DLL or component from
+you may click cancel or close the program.
