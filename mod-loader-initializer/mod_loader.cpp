@@ -20,8 +20,12 @@ bool IsTargetExecutable() {
 		return false;
 	}
 
-	std::filesystem::path fullPath(path);
-	return fullPath.filename().string() == std::string("mio.exe");
+	// Extract filename from full path
+	const char* exeName = strrchr(path, '\\');
+	exeName = exeName ? exeName + 1 : path;
+
+	// Check if this is MIO.exe (case-insensitive)
+	return _stricmp(exeName, "MIO.exe") == 0;
 }
 //Stops double running of the loader when the exe is ran directly instead of from steam
 bool IsCorrectRun() {
@@ -99,9 +103,9 @@ std::vector<std::wstring> GetLaunchArguments() {
 	return arguments;
 }
 std::wstring GetArgument(std::vector<std::wstring> args, std::wstring arg, std::wstring defaultResult) {
-	auto it = std::find(args.begin(), args.end(), arg);
-	if (it != args.end() && (it + 1) != args.end()) {
-		return *(it + 1);
+	int ind = std::find(args.begin(), args.end(), arg) - args.begin();
+	if (ind + 1 < args.capacity()) {
+		return args[ind + 1];
 	}
 	return defaultResult;
 }
@@ -116,8 +120,7 @@ std::string WideToNarrow(const std::wstring& wstr) {
 }
 
 void __stdcall LogMessage(const char* message) {
-	printf("%s\n", message); 
-	fflush(stdout);
+	printf("%s\n", message);
 }
 
 void InitializeModLoader() {
@@ -132,74 +135,55 @@ void InitializeModLoader() {
 	// Create modconfig directory if it doesn't exist
 	CreateDirectoryA(modsConfigPath.c_str(), NULL);
 
-	if (AllocConsole()) {
-		FILE* f;
-		freopen_s(&f, "CONOUT$", "w", stdout);
-	}
+	AllocConsole();
+	FILE* f;
+	freopen_s(&f, "CONOUT$", "w", stdout);
 
 	printf("==============================================\n");
 	printf("        MIO Mod Loader v%d.%d.%d\n", MOD_LOADER_VERSION_MAJOR, MOD_LOADER_VERSION_MINOR, MOD_LOADER_VERSION_PATCH);
 	printf("==============================================\n");
 
 	// Disable DWM for GUI mods (needed on some systems)
-	// Disabled this cause idk what this does
-	//DisableDWM();
+	DisableDWM();
 
 	HMODULE hModule = GetModuleHandleA("mio.exe");
 	if (!hModule) {
-		hModule = GetModuleHandleA(nullptr);
-		if (!hModule) {
-			LogModLoaderMessage("ERROR: Failed to get mio.exe module handle!");
-			Sleep(2000);
-			return;
-		}
+		LogModLoaderMessage("ERROR: Failed to get mio.exe module handle!");
+		return;
 	}
 
 
-	fs::path configPath = fs::current_path() / "mio-mod-loader" / "MioModLoader.runtimeconfig.json";
-	fs::path assemblyPath = fs::current_path() / "mio-mod-loader" / "MioModLoader.dll";
+	fs::path configPath = fs::current_path() / fs::path("mio-mod-loader/MioModLoader.runtimeconfig.json");
+	fs::path assemblyPath = fs::current_path() / fs::path("mio-mod-loader/MioModLoader.dll");
 
 	char_t buffer[MAX_PATH];
 	size_t bufferSize = sizeof(buffer) / sizeof(char_t);
-	int get_hostfxr_rc = get_hostfxr_path(buffer, &bufferSize, nullptr);
-	fs::path hostfxrPath;
-	if (get_hostfxr_rc == 0) {
-		hostfxrPath = buffer;
-	} else {
-		fs::path localHostfxr = fs::current_path() / "mio-mod-loader" / "hostfxr.dll";
-		if (fs::exists(localHostfxr)) {
-			hostfxrPath = localHostfxr;
-		} else {
-			LogModLoaderMessage("ERROR: Could not locate hostfxr.dll via nethost or local directory!");
-			Sleep(2000);
-			return;
-		}
-	}
-	std::wstring hostfxrPathStr = hostfxrPath.make_preferred().wstring();
-	HMODULE lib = LoadLibraryW(hostfxrPathStr.c_str());
+	get_hostfxr_path(buffer, &bufferSize, nullptr);
+
+	HMODULE lib = LoadLibraryW(buffer);
 	auto initFptr = (hostfxr_initialize_for_runtime_config_fn)GetProcAddress(lib, "hostfxr_initialize_for_runtime_config");
 	auto getDelegateFptr = (hostfxr_get_runtime_delegate_fn)GetProcAddress(lib, "hostfxr_get_runtime_delegate");
 	auto closeFptr = (hostfxr_close_fn)GetProcAddress(lib, "hostfxr_close");
 	hostfxr_handle ctx = nullptr;
 	int rc = initFptr(configPath.c_str(), nullptr, &ctx);
 	if (rc != 0 || ctx == nullptr) {
-		LogModLoaderMessage("Failed to initialize hostfxr");
-		Sleep(2000);
+		LogMessage("Failed to initialize hostfxr");
 		return;
 	}
 
+	// 2. Fetch the assembly loader delegate
 	void* loadAssembly = nullptr;
 	rc = getDelegateFptr(ctx, hdt_load_assembly_and_get_function_pointer, &loadAssembly);
 	if (rc != 0 || loadAssembly == nullptr) {
-		LogModLoaderMessage("Failed to retrieve runtime delegate");
+		LogMessage("Failed to retrieve runtime delegate");
 		closeFptr(ctx);
-		Sleep(2000);
 		return;
 	}
 
 	auto loadAssemblyAndGetFunctionPointer = (load_assembly_and_get_function_pointer_fn)loadAssembly;
 	void(*modInit)(void*, void*, void*, void*) = nullptr;
 
+	// 3. Resolve your specific C# entry point
 	rc = loadAssemblyAndGetFunctionPointer(
 		assemblyPath.c_str(),
 		L"MioModLoader.ModLoader, MioModLoader",
@@ -210,9 +194,8 @@ void InitializeModLoader() {
 	);
 
 	if (rc != 0 || modInit == nullptr) {
-		LogModLoaderMessage("Failed to resolve LoadMods entrypoint");
+		LogMessage("Failed to resolve LoadMods entrypoint");
 		closeFptr(ctx);
-		Sleep(2000);
 		return;
 	}
 

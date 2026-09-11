@@ -135,7 +135,7 @@
       <OutputFile>$(OutDir)winhttp.dll</OutputFile>
     </Link>
   </ItemDefinitionGroup>
-  <PropertyGroup>
+    <PropertyGroup>
     <DotNet8NativeDir>$([System.IO.Directory]::GetDirectories("C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Host.win-x64", "8.0.*"))</DotNet8NativeDir>
     <FirstDotNetDir>$(DotNet8NativeDir.Split(';')[0])</FirstDotNetDir>
   </PropertyGroup>
@@ -155,7 +155,7 @@
       <AdditionalIncludeDirectories>$(FirstDotNetDir)\runtimes\win-x64\native</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Console</SubSystem>
+      <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <OutputFile>$(OutDir)winhttp.dll</OutputFile>
