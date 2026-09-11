@@ -153,8 +153,8 @@ void InitializeModLoader() {
 	}
 
 
-	fs::path configPath = fs::current_path() / fs::path("mio-mod-loader/MioModLoader.runtimeconfig.json");
-	fs::path assemblyPath = fs::current_path() / fs::path("mio-mod-loader/MioModLoader.dll");
+	fs::path configPath = fs::current_path() / "mio-mod-loader" / "MioModLoader.runtimeconfig.json";
+	fs::path assemblyPath = fs::current_path() / "mio-mod-loader" / "MioModLoader.dll";
 
 	char_t buffer[MAX_PATH];
 	size_t bufferSize = sizeof(buffer) / sizeof(char_t);
@@ -171,7 +171,6 @@ void InitializeModLoader() {
 		return;
 	}
 
-	// 2. Fetch the assembly loader delegate
 	void* loadAssembly = nullptr;
 	rc = getDelegateFptr(ctx, hdt_load_assembly_and_get_function_pointer, &loadAssembly);
 	if (rc != 0 || loadAssembly == nullptr) {
@@ -183,7 +182,6 @@ void InitializeModLoader() {
 	auto loadAssemblyAndGetFunctionPointer = (load_assembly_and_get_function_pointer_fn)loadAssembly;
 	void(*modInit)(void*, void*, void*, void*) = nullptr;
 
-	// 3. Resolve your specific C# entry point
 	rc = loadAssemblyAndGetFunctionPointer(
 		assemblyPath.c_str(),
 		L"MioModLoader.ModLoader, MioModLoader",
