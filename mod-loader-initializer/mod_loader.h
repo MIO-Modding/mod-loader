@@ -1,7 +1,7 @@
 #pragma once
 
 // Mod Loader Version
-#define MOD_LOADER_VERSION_MAJOR 0
+#define MOD_LOADER_VERSION_MAJOR 2
 #define MOD_LOADER_VERSION_MINOR 0
 #define MOD_LOADER_VERSION_PATCH 1
 
