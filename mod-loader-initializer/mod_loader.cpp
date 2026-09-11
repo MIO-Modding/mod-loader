@@ -156,8 +156,8 @@ void InitializeModLoader() {
 	}
 
 
-	fs::path configPath = fs::current_path() / "mio-mod-loader" / "MioModLoader.runtimeconfig.json";
-	fs::path assemblyPath = fs::current_path() / "mio-mod-loader" / "MioModLoader.dll";
+	fs::path configPath = (fs::current_path() / "mio-mod-loader" / "MioModLoader.runtimeconfig.json").make_preferred();
+	fs::path assemblyPath = (fs::current_path() / "mio-mod-loader" / "MioModLoader.dll").make_preferred();
 
 	char_t buffer[MAX_PATH];
 	size_t bufferSize = sizeof(buffer) / sizeof(char_t);
@@ -166,24 +166,41 @@ void InitializeModLoader() {
 	if (get_hostfxr_rc == 0) {
 		hostfxrPath = buffer;
 	} else {
-		fs::path localHostfxr = fs::current_path() / "mio-mod-loader" / "hostfxr.dll";
+		fs::path localHostfxr = (fs::current_path() / "mio-mod-loader" / "hostfxr.dll").make_preferred();
 		if (fs::exists(localHostfxr)) {
 			hostfxrPath = localHostfxr;
 		} else {
-			LogModLoaderMessage("ERROR: Could not locate hostfxr.dll via nethost or local directory!");
+			LogModLoaderMessage("Could not locate hostfxr.dll via nethost or local directory!");
 			Sleep(2000);
 			return;
 		}
 	}
-	std::wstring hostfxrPathStr = hostfxrPath.make_preferred().wstring();
-	HMODULE lib = LoadLibraryW(hostfxrPathStr.c_str());
+	fs::path preferredHostfxr = hostfxrPath.make_preferred();
+	HMODULE lib = LoadLibraryW(preferredHostfxr.c_str());
+	if (!lib) {
+		LogModLoaderMessage("Failed to load hostfxr.dll module");
+		Sleep(2000);
+		return;
+	}
 	auto initFptr = (hostfxr_initialize_for_runtime_config_fn)GetProcAddress(lib, "hostfxr_initialize_for_runtime_config");
 	auto getDelegateFptr = (hostfxr_get_runtime_delegate_fn)GetProcAddress(lib, "hostfxr_get_runtime_delegate");
 	auto closeFptr = (hostfxr_close_fn)GetProcAddress(lib, "hostfxr_close");
+
+	if (!initFptr || !getDelegateFptr || !closeFptr) {
+		LogModLoaderMessage("Failed to get hostfxr function pointers from loaded module");
+		FreeLibrary(lib);
+		Sleep(2000);
+		return;
+	}
+	std::wstring configPathStr = configPath.make_preferred().wstring();
+
 	hostfxr_handle ctx = nullptr;
-	int rc = initFptr(configPath.c_str(), nullptr, &ctx);
+	int rc = initFptr(configPathStr.c_str(), nullptr, &ctx);
+
 	if (rc != 0 || ctx == nullptr) {
 		LogModLoaderMessage("Failed to initialize hostfxr");
+		if (ctx && closeFptr) closeFptr(ctx);
+		FreeLibrary(lib);
 		Sleep(2000);
 		return;
 	}
