@@ -109,6 +109,13 @@ std::wstring GetArgument(std::vector<std::wstring> args, std::wstring arg, std::
 	}
 	return defaultResult;
 }
+bool HasArgument(std::vector<std::wstring> args, std::wstring arg) {
+	auto result = std::find(args.begin(), args.end(), arg);
+	if (result != args.end()) {
+		return true;
+	}
+	return false;
+}
 
 std::string WideToNarrow(const std::wstring& wstr) {
 	if (wstr.empty()) return "";
@@ -125,6 +132,11 @@ void __stdcall LogMessage(const char* message) {
 
 void InitializeModLoader() {
 	std::vector<std::wstring> launchArgs = GetLaunchArguments();
+
+	if (HasArgument(launchArgs, L"--vanilla")) {
+		return;
+	}
+
 	std::string modsPath = WideToNarrow(GetArgument(launchArgs, L"--mods-path", L"mods"));
 	std::string modsConfigPath = WideToNarrow(GetArgument(launchArgs, L"--mods-config-path", L"modconfig"));
 
