@@ -1,9 +1,9 @@
 #pragma once
 
 // Mod Loader Version
-#define MOD_LOADER_VERSION_MAJOR 3
+#define MOD_LOADER_VERSION_MAJOR 2
 #define MOD_LOADER_VERSION_MINOR 0
-#define MOD_LOADER_VERSION_PATCH 1
+#define MOD_LOADER_VERSION_PATCH 3
 
 typedef struct Version {
 	int major, minor, patch;
