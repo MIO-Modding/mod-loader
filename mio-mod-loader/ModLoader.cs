@@ -98,10 +98,8 @@ public static class ModLoader
 
         LogLoaderMessage("Loading mods from " + modsPath);
 
-        Dictionary<string, (string assemblyPath, string modId, string modName, string[] dependencies)> modLoadInfo =
-            new();
+        ModLoadContext ctx = new();
 
-        List<Assembly> assemblies = [];
         foreach (string i in Directory.GetDirectories(modsPath))
         {
             string modInfo = Path.Combine(i, "mod.json");
@@ -160,16 +158,16 @@ public static class ModLoader
                 continue;
             }
 
-            modLoadInfo.Add(id, (main, id, name, dependencies));
+            ctx.ModInfo.Add(id, new ModInfo(main, id, name, dependencies));
         }
 
         Dictionary<string, string> modsMissingDependencies = [];
-        foreach ((string key, (_, _, _, string[] dependencies)) in modLoadInfo)
+        foreach ((string key, ModInfo modInfo) in ctx.ModInfo)
         {
             List<string> missing = [];
-            foreach (string j in dependencies)
+            foreach (string j in modInfo.Dependencies)
             {
-                if (!modLoadInfo.ContainsKey(j))
+                if (!ctx.ModInfo.ContainsKey(j))
                 {
                     missing.Add(j);
                 }
@@ -192,122 +190,117 @@ public static class ModLoader
             throw new Exception(sb.ToString());
         }
 
-        List<Mod> loadedMods = [];
         List<string> rootMods = [];
-        Dictionary<string, string[]> dependentDict = [];
-        foreach ((string key, (_, _, _, string[] dependencies)) in modLoadInfo)
+        foreach ((string key, ModInfo modInfo) in ctx.ModInfo)
         {
-            string[] dependents = modLoadInfo
-                .Where(j => j.Value.dependencies.Contains(key))
+            string[] dependents = ctx.ModInfo
+                .Where(j => j.Value.Dependencies.Contains(key))
                 .Select(j => j.Key).ToArray();
-            if (dependencies.Length <= 0)
+            if (modInfo.Dependencies.Length <= 0)
             {
                 rootMods.Add(key);
             }
 
-            dependentDict.Add(key, dependents);
+            ctx.Dependents.Add(key, dependents);
         }
 
-        LoadDependents(rootMods.ToArray());
-        LogLoaderMessage($"Finished loading {loadedMods.Count} mods from " + modsPath);
-        LoadedMods = loadedMods;
-        LoadedAssemblies = assemblies;
-        return;
+        LoadDependents(rootMods.ToArray(), ctx);
+        LogLoaderMessage($"Finished loading {ctx.LoadedMods.Count} mods from " + modsPath);
+        LoadedMods = ctx.LoadedMods;
+        LoadedAssemblies = ctx.Assemblies;
+    }
 
-        void LoadDependents(string[] mods)
+    private static void LoadDependents(string[] mods, ModLoadContext ctx) {
+        foreach (string i in mods)
         {
-            foreach (string i in mods)
+            LogLoaderMessage($"Loading Mod {i}");
+            string dllPath = ctx.ModInfo[i].AssemblyPath;
+            AssemblyLoadContext context = new(name: Path.GetFileNameWithoutExtension(dllPath));
+            context.Resolving += (alc, assemblyName) =>
             {
-                LogLoaderMessage($"Loading Mod {i}");
-                string dllPath = modLoadInfo[i].assemblyPath;
-                AssemblyLoadContext context = new(name: Path.GetFileNameWithoutExtension(dllPath));
-                context.Resolving += (alc, assemblyName) =>
+                string name = assemblyName.Name!;
+                if (name == "MioModLoader")
                 {
-                    string name = assemblyName.Name!;
-                    if (name == "MioModLoader")
-                    {
-                        return Assembly.GetExecutingAssembly();
-                    }
-
-                    Assembly? assembly = assemblies.FirstOrDefault(a => a.GetName().Name == name);
-                    if (assembly != null)
-                    {
-                        return assembly;
-                    }
-
-                    if (AllAssemblies.TryGetValue(name, out Assembly? value))
-                    {
-                        return value;
-                    }
-
-                    string expectedDependencyPath =
-                        Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, $"{name}.dll");
-                    if (File.Exists(expectedDependencyPath))
-                    {
-                        Assembly result = alc.LoadFromAssemblyPath(expectedDependencyPath);
-                        AllAssemblies.Add(name, result);
-                        return result;
-                    }
-
-                    expectedDependencyPath = Path.Combine(Path.GetDirectoryName(dllPath)!, $"{name}.dll");
-                    if (File.Exists(expectedDependencyPath))
-                    {
-                        Assembly result = alc.LoadFromAssemblyPath(expectedDependencyPath);
-                        AllAssemblies.Add(name, result);
-                        return result;
-                    }
-
-                    return null;
-                };
-                context.ResolvingUnmanagedDll += static (assembly, libraryName) =>
-                {
-                    string modFolder = new FileInfo(assembly.Location).DirectoryName!;
-                    string nativeFolder = Path.Combine(modFolder, "win-x64", "native");
-                    string expectedDllPath = Path.Combine(nativeFolder, $"{libraryName}.dll");
-
-                    nint handle = nint.Zero;
-                    if (File.Exists(expectedDllPath))
-                    {
-                        NativeLibrary.TryLoad(expectedDllPath, out handle);
-                    }
-
-                    modFolder = new FileInfo(Assembly.GetExecutingAssembly().Location).DirectoryName!;
-                    nativeFolder = Path.Combine(modFolder, "win-x64", "native");
-                    expectedDllPath = Path.Combine(nativeFolder, $"{libraryName}.dll");
-                    if (File.Exists(expectedDllPath))
-                    {
-                        NativeLibrary.TryLoad(expectedDllPath, out handle);
-                    }
-
-                    return handle;
-                };
-                Assembly assembly = context.LoadFromAssemblyPath(dllPath);
-                assemblies.Add(assembly);
-
-                if (InstantiateMod(assembly, modLoadInfo[i]) is not { } mod)
-                {
-                    continue;
+                    return Assembly.GetExecutingAssembly();
                 }
 
-                loadedMods.Add(mod);
-
-                mod.ModTypes = InstantiateModTypes(mod);
-                foreach (ModType modType in mod.ModTypes)
+                Assembly? assembly = ctx.Assemblies.FirstOrDefault(a => a.GetName().Name == name);
+                if (assembly != null)
                 {
-                    modType.Initialize();
+                    return assembly;
                 }
 
-                mod.Initialize();
-                if (dependentDict.TryGetValue(i, out string[]? dependents))
+                if (AllAssemblies.TryGetValue(name, out Assembly? value))
                 {
-                    LoadDependents(dependents);
+                    return value;
                 }
+
+                string expectedDependencyPath =
+                    Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, $"{name}.dll");
+                if (File.Exists(expectedDependencyPath))
+                {
+                    Assembly result = alc.LoadFromAssemblyPath(expectedDependencyPath);
+                    AllAssemblies.Add(name, result);
+                    return result;
+                }
+
+                expectedDependencyPath = Path.Combine(Path.GetDirectoryName(dllPath)!, $"{name}.dll");
+                if (File.Exists(expectedDependencyPath))
+                {
+                    Assembly result = alc.LoadFromAssemblyPath(expectedDependencyPath);
+                    AllAssemblies.Add(name, result);
+                    return result;
+                }
+
+                return null;
+            };
+            context.ResolvingUnmanagedDll += static (assembly, libraryName) =>
+            {
+                string modFolder = new FileInfo(assembly.Location).DirectoryName!;
+                string nativeFolder = Path.Combine(modFolder, "win-x64", "native");
+                string expectedDllPath = Path.Combine(nativeFolder, $"{libraryName}.dll");
+
+                nint handle = nint.Zero;
+                if (File.Exists(expectedDllPath))
+                {
+                    NativeLibrary.TryLoad(expectedDllPath, out handle);
+                }
+
+                modFolder = new FileInfo(Assembly.GetExecutingAssembly().Location).DirectoryName!;
+                nativeFolder = Path.Combine(modFolder, "win-x64", "native");
+                expectedDllPath = Path.Combine(nativeFolder, $"{libraryName}.dll");
+                if (File.Exists(expectedDllPath))
+                {
+                    NativeLibrary.TryLoad(expectedDllPath, out handle);
+                }
+
+                return handle;
+            };
+            Assembly assembly = context.LoadFromAssemblyPath(dllPath);
+            ctx.Assemblies.Add(assembly);
+
+            if (InstantiateMod(assembly, ctx.ModInfo[i]) is not { } mod)
+            {
+                continue;
+            }
+
+            ctx.LoadedMods.Add(mod);
+
+            mod.ModTypes = InstantiateModTypes(mod);
+            foreach (ModType modType in mod.ModTypes)
+            {
+                modType.Initialize();
+            }
+
+            mod.Initialize();
+            if (ctx.Dependents.TryGetValue(i, out string[]? dependents))
+            {
+                LoadDependents(dependents, ctx);
             }
         }
     }
 
-    private static Mod? InstantiateMod(Assembly assembly,
-        (string dllPath, string modId, string modName, string[] dependencies) modLoadInfo)
+    private static Mod? InstantiateMod(Assembly assembly, ModInfo modInfo)
     {
         const BindingFlags bindingFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         TypeInfo? modType = assembly.DefinedTypes.SingleOrDefault(t => !t.IsAbstract && t.IsSubclassOf(typeof(Mod)));
@@ -323,14 +316,14 @@ public static class ModLoader
         else
         {
             LogLoaderWarning(
-                $"Skipping mod {modLoadInfo.modName}: Mod type {modType.Name} does not have a parameterless constructor.");
+                $"Skipping mod {modInfo.Name}: Mod type {modType.Name} does not have a parameterless constructor.");
             return null;
         }
 
         mod.Assembly = assembly;
-        mod.Name = modLoadInfo.modName;
-        mod.Id = modLoadInfo.modId;
-        mod.Dependencies = modLoadInfo.dependencies;
+        mod.Name = modInfo.Name;
+        mod.Id = modInfo.Id;
+        mod.Dependencies = modInfo.Dependencies;
         return mod;
     }
 
@@ -354,4 +347,14 @@ public static class ModLoader
 
         return modTypes.ToArray();
     }
+
 }
+internal class ModLoadContext
+{
+    public readonly Dictionary<string, ModInfo> ModInfo = [];
+    public readonly List<Assembly> Assemblies = [];
+    public readonly List<Mod> LoadedMods = [];
+    public readonly Dictionary<string, string[]> Dependents = [];
+}
+
+internal record ModInfo(string AssemblyPath, string Id, string Name, string[] Dependencies);
