@@ -11,6 +11,7 @@ public static class ModLoader
 {
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
     private delegate void LogMessageDelegate([MarshalAs(UnmanagedType.LPStr)] string message);
+
     private static LogMessageDelegate? _cachedLogMessageMethod;
     public static Action<string>? logOverride;
     public static List<Assembly> LoadedAssemblies { get; private set; } = [];
@@ -18,8 +19,10 @@ public static class ModLoader
     public static string ModsPath { get; private set; } = "./mods";
     public static string ModsConfigPath { get; private set; } = "./modconfig";
     public static long MioMemoryAddress { get; private set; }
+
     [UnmanagedCallersOnly(EntryPoint = "LoadMods", CallConvs = [typeof(CallConvCdecl)])]
-    public static void LoadModsPointers(IntPtr modsPathPtr, IntPtr modsConfigPathPtr, IntPtr logMessageMethod, IntPtr mioMemoryAddress)
+    public static void LoadModsPointers(IntPtr modsPathPtr, IntPtr modsConfigPathPtr, IntPtr logMessageMethod,
+        IntPtr mioMemoryAddress)
     {
         try
         {
@@ -34,23 +37,46 @@ public static class ModLoader
         }
         catch (Exception ex)
         {
+            ConsoleColor oldColor = Console.ForegroundColor;
+            Console.ForegroundColor = ConsoleColor.Red;
             LogLoaderMessage($"[FATAL CRASH] Mod execution handler failed: {ex.Message}\n{ex.StackTrace}");
+
+            if (ex is MemberAccessException or TypeLoadException)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                LogLoaderMessage("This is likely due to a mod or the Modding API being out of date. ");
+                LogLoaderMessage("Please ensure you are using the latest version of all mods and the Modding API.\n\n");
+            }
+
+            Console.ForegroundColor = oldColor;
         }
     }
+
     public static void LogMessage(string message)
     {
         if (logOverride == null)
         {
             _cachedLogMessageMethod!.Invoke(message);
-        } else
+        }
+        else
         {
             logOverride.Invoke(message);
         }
     }
+
     public static void LogLoaderMessage(string message)
     {
         LogMessage($"[LOADER] {message}");
     }
+
+    public static void LogLoaderWarning(string message)
+    {
+        ConsoleColor oldColor = Console.ForegroundColor;
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        LogMessage($"[LOADER] {message}");
+        Console.ForegroundColor = oldColor;
+    }
+
     private static void LoadLibraries()
     {
         string modFolder = new FileInfo(Assembly.GetExecutingAssembly().Location).DirectoryName!;
@@ -62,7 +88,9 @@ public static class ModLoader
             NativeLibrary.TryLoad(Path.Combine(nativeFolder, i + ".dll"), out _);
         }
     }
+
     private static readonly Dictionary<string, Assembly> AllAssemblies = [];
+
     public static void LoadMods(string modsPath, string modsConfigPath)
     {
         ModsPath = modsPath;
@@ -70,7 +98,8 @@ public static class ModLoader
 
         LogLoaderMessage("Loading mods from " + modsPath);
 
-        Dictionary<string, (string assemblyPath, string modId, string modName, string[] dependencies)> modLoadInfo = new();
+        Dictionary<string, (string assemblyPath, string modId, string modName, string[] dependencies)> modLoadInfo =
+            new();
 
         List<Assembly> assemblies = [];
         foreach (string i in Directory.GetDirectories(modsPath))
@@ -83,24 +112,25 @@ public static class ModLoader
 
             if (JsonNode.Parse(File.ReadAllText(modInfo)) is not JsonObject obj)
             {
+                LogLoaderWarning($"Skipping mod in {i}, mod.json is not a valid JSON object.");
                 continue;
             }
 
             if (obj["name"]?.GetValue<string>() is not { } name)
             {
-                LogLoaderMessage($"Skipping mod in {i}, mod.json is missing field \"name\".");
+                LogLoaderWarning($"Skipping mod in {i}, mod.json is missing field \"name\".");
                 continue;
             }
 
             if (obj["id"]?.GetValue<string>() is not { } id)
             {
-                LogLoaderMessage($"Skipping mod {name}: mod.json is missing field \"id\".");
+                LogLoaderWarning($"Skipping mod {name}: mod.json is missing field \"id\".");
                 continue;
             }
 
             if (obj["main"]?.GetValue<string>() is not { } mainFile)
             {
-                LogLoaderMessage($"Skipping mod {name}: mod.json is missing field \"main\".");
+                LogLoaderWarning($"Skipping mod {name}: mod.json is missing field \"main\".");
                 continue;
             }
 
@@ -113,9 +143,10 @@ public static class ModLoader
                 dependencies = new string[jsonDependencies.Count];
                 for (int index = 0; index < jsonDependencies.Count; index++)
                 {
-                    if (jsonDependencies[index]?.GetValue<string>() is not {} dependency)
+                    if (jsonDependencies[index]?.GetValue<string>() is not { } dependency)
                     {
-                        LogLoaderMessage($"Skipping mod {name}: mod.json dependencies has an invalid dependency at index {index}");
+                        LogLoaderWarning(
+                            $"Skipping mod {name}: mod.json dependencies has an invalid dependency at index {index}");
                         validDependencies = false;
                         break;
                     }
@@ -131,6 +162,7 @@ public static class ModLoader
 
             modLoadInfo.Add(id, (main, id, name, dependencies));
         }
+
         Dictionary<string, string> modsMissingDependencies = [];
         foreach ((string key, (_, _, _, string[] dependencies)) in modLoadInfo)
         {
@@ -142,11 +174,13 @@ public static class ModLoader
                     missing.Add(j);
                 }
             }
+
             if (missing.Count > 0)
             {
                 modsMissingDependencies.Add(key, string.Join(", ", missing));
             }
         }
+
         if (modsMissingDependencies.Count > 0)
         {
             StringBuilder sb = new("Mods are missing dependencies:");
@@ -154,8 +188,10 @@ public static class ModLoader
             {
                 sb.Append($"\n{key} - {value}");
             }
+
             throw new Exception(sb.ToString());
         }
+
         List<Mod> loadedMods = [];
         List<string> rootMods = [];
         Dictionary<string, string[]> dependentDict = [];
@@ -168,8 +204,10 @@ public static class ModLoader
             {
                 rootMods.Add(key);
             }
+
             dependentDict.Add(key, dependents);
         }
+
         LoadDependents(rootMods.ToArray());
         LogLoaderMessage($"Finished loading {loadedMods.Count} mods from " + modsPath);
         LoadedMods = loadedMods;
@@ -190,22 +228,27 @@ public static class ModLoader
                     {
                         return Assembly.GetExecutingAssembly();
                     }
+
                     Assembly? assembly = assemblies.FirstOrDefault(a => a.GetName().Name == name);
                     if (assembly != null)
                     {
                         return assembly;
                     }
+
                     if (AllAssemblies.TryGetValue(name, out Assembly? value))
                     {
                         return value;
                     }
-                    string expectedDependencyPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, $"{name}.dll");
+
+                    string expectedDependencyPath =
+                        Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, $"{name}.dll");
                     if (File.Exists(expectedDependencyPath))
                     {
                         Assembly result = alc.LoadFromAssemblyPath(expectedDependencyPath);
                         AllAssemblies.Add(name, result);
                         return result;
                     }
+
                     expectedDependencyPath = Path.Combine(Path.GetDirectoryName(dllPath)!, $"{name}.dll");
                     if (File.Exists(expectedDependencyPath))
                     {
@@ -213,6 +256,7 @@ public static class ModLoader
                         AllAssemblies.Add(name, result);
                         return result;
                     }
+
                     return null;
                 };
                 context.ResolvingUnmanagedDll += static (assembly, libraryName) =>
@@ -234,6 +278,7 @@ public static class ModLoader
                     {
                         NativeLibrary.TryLoad(expectedDllPath, out handle);
                     }
+
                     return handle;
                 };
                 Assembly assembly = context.LoadFromAssemblyPath(dllPath);
@@ -247,7 +292,8 @@ public static class ModLoader
                 loadedMods.Add(mod);
 
                 mod.ModTypes = InstantiateModTypes(mod);
-                foreach (ModType modType in mod.ModTypes) {
+                foreach (ModType modType in mod.ModTypes)
+                {
                     modType.Initialize();
                 }
 
@@ -260,7 +306,8 @@ public static class ModLoader
         }
     }
 
-    private static Mod? InstantiateMod(Assembly assembly, (string dllPath, string modId, string modName, string[] dependencies) modLoadInfo)
+    private static Mod? InstantiateMod(Assembly assembly,
+        (string dllPath, string modId, string modName, string[] dependencies) modLoadInfo)
     {
         const BindingFlags bindingFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         TypeInfo? modType = assembly.DefinedTypes.SingleOrDefault(t => !t.IsAbstract && t.IsSubclassOf(typeof(Mod)));
@@ -275,7 +322,8 @@ public static class ModLoader
         }
         else
         {
-            LogLoaderMessage($"Skipping mod {modLoadInfo.modName}: Mod type {modType.Name} does not have a parameterless constructor.");
+            LogLoaderWarning(
+                $"Skipping mod {modLoadInfo.modName}: Mod type {modType.Name} does not have a parameterless constructor.");
             return null;
         }
 
@@ -290,7 +338,8 @@ public static class ModLoader
     {
         const BindingFlags bindingFlags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
         List<ModType> modTypes = [];
-        foreach (TypeInfo type in mod.Assembly.DefinedTypes.Where(t => !t.IsAbstract && t.IsSubclassOf(typeof(ModType))))
+        foreach (TypeInfo type in
+                 mod.Assembly.DefinedTypes.Where(t => !t.IsAbstract && t.IsSubclassOf(typeof(ModType))))
         {
             if (type.GetConstructor(bindingFlags, Type.EmptyTypes) is { } ctor)
             {
