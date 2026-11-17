@@ -13,6 +13,10 @@ public class Mod
     public string[] Dependencies { get; internal set; } = [];
     public ModType[] ModTypes { get; internal set; } = [];
 
+
+    /// <summary>ANSI color for this mod's name in the log window (from mod.json "logColor", or picked from the id).</summary>
+    internal string LogColor { get; set; } = "";
+
     public virtual void Initialize() { }
 
     public string GetModFolderPath()
@@ -25,8 +29,29 @@ public class Mod
         return Path.Combine(ModLoader.ModsConfigPath, Id);
     }
 
+    /// <summary>Logs a Debug line: hidden unless the game is started with --log-level debug.</summary>
+    public void LogDebug(string message)
+    {
+        ModLoader.Log(this, message, LogLevel.Debug);
+    }
+
     public void LogMessage(string message)
     {
-        ModLoader.LogMessage($"[{Id}] {message}");
+        ModLoader.Log(this, message);
+    }
+
+    public void LogInfo(string message)
+    {
+        ModLoader.Log(this, message, LogLevel.Info);
+    }
+
+    public void LogWarning(string message)
+    {
+        ModLoader.Log(this, message, LogLevel.Warning);
+    }
+
+    public void LogError(string message)
+    {
+        ModLoader.Log(this, message, LogLevel.Error);
     }
 }

@@ -10,24 +10,84 @@ namespace MioModLoader;
 public static class ModLoader
 {
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    private delegate void LogMessageDelegate([MarshalAs(UnmanagedType.LPStr)] string message);
+    private delegate void LogMessageDelegate([MarshalAs(UnmanagedType.LPUTF8Str)] string message);
 
     private static LogMessageDelegate? _cachedLogMessageMethod;
+
+
+    /// <summary>
+    /// Old way to send log lines to the game's log file. Still honored, with plain lines, when
+    /// <see cref="FileLogSink"/> isn't set; replaced by <see cref="FileLogSink"/>.
+    /// </summary>
+    [Obsolete("Set FileLogSink instead. Log lines are shown in the log window by the loader itself.")]
     public static Action<string>? logOverride;
+
+    private static Func<string, bool>? _fileLogSink;
+
+    /// <summary>
+    /// Writes one plain log line (no trailing newline) to the game's log file, returning false if it
+    /// can't yet (e.g. the game hasn't opened the file). Lines are kept until it can, so nothing logged
+    /// early is lost. Set by the modding api.
+    /// </summary>
+    public static Func<string, bool>? FileLogSink
+    {
+        get => _fileLogSink;
+        set
+        {
+            _fileLogSink = value;
+            Logging.Flush();
+        }
+    }
+
+    /// <summary>Writes log lines kept while <see cref="FileLogSink"/> couldn't take them.</summary>
+    public static void FlushFileLog() => Logging.Flush();
     public static List<Assembly> LoadedAssemblies { get; private set; } = [];
     public static List<Mod> LoadedMods { get; private set; } = [];
     public static string ModsPath { get; private set; } = "./mods";
     public static string ModsConfigPath { get; private set; } = "./modconfig";
     public static long MioMemoryAddress { get; private set; }
 
+
+    /// <summary>Flags from the native loader; keep in step with LogFlags in mod_loader.cpp.</summary>
+    [Flags]
+    private enum LogFlags
+    {
+        Rich = 1 << 0,
+        GameLogs = 1 << 1,
+        LevelShift = 2,       // bits 2-3: minimum LogLevel
+        LevelMask = 3 << 2,
+    }
+
+    /// <summary>
+    /// The least important level that's logged; lower lines are dropped from the window and the file.
+    /// Set at launch with --log-level debug|info|warning|error (default info), and changeable at runtime.
+    /// </summary>
+    public static LogLevel MinimumLogLevel
+    {
+        get => Logging.MinimumLevel;
+        set => Logging.MinimumLevel = value;
+    }
+
+    /// <summary>
+    /// True if lines at <paramref name="level"/> are logged. Use it to skip building an expensive
+    /// message, e.g. <c>if (ModLoader.IsLogLevelEnabled(LogLevel.Debug)) LogDebug(Dump());</c>.
+    /// </summary>
+    public static bool IsLogLevelEnabled(LogLevel level) => level >= Logging.MinimumLevel;
+
     [UnmanagedCallersOnly(EntryPoint = "LoadMods", CallConvs = [typeof(CallConvCdecl)])]
     public static void LoadModsPointers(IntPtr modsPathPtr, IntPtr modsConfigPathPtr, IntPtr logMessageMethod,
-        IntPtr mioMemoryAddress)
+        IntPtr mioMemoryAddress, int logFlags)
     {
         try
         {
             MioMemoryAddress = mioMemoryAddress;
             _cachedLogMessageMethod = Marshal.GetDelegateForFunctionPointer<LogMessageDelegate>(logMessageMethod);
+            Logging.Rich = ((LogFlags)logFlags).HasFlag(LogFlags.Rich);
+            Logging.MinimumLevel = (LogLevel)((logFlags & (int)LogFlags.LevelMask) >> (int)LogFlags.LevelShift);
+            Logging.ConsoleSink = line => _cachedLogMessageMethod(line);
+
+            // Standard output carries the game's output now; route Console.WriteLine to the log instead.
+            Console.SetOut(new ConsoleLogWriter());
 
             string path = Marshal.PtrToStringAnsi(modsPathPtr) ?? ModsPath;
             string config = Marshal.PtrToStringAnsi(modsConfigPathPtr) ?? ModsConfigPath;
@@ -37,45 +97,38 @@ public static class ModLoader
         }
         catch (Exception ex)
         {
-            ConsoleColor oldColor = Console.ForegroundColor;
-            Console.ForegroundColor = ConsoleColor.Red;
-            LogLoaderMessage($"[FATAL CRASH] Mod execution handler failed: {ex.Message}\n{ex.StackTrace}");
+            LogLoaderError($"[FATAL CRASH] Mod execution handler failed: {ex.Message}\n{ex.StackTrace}");
 
             if (ex is MemberAccessException or TypeLoadException)
             {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                LogLoaderMessage("This is likely due to a mod or the Modding API being out of date. ");
-                LogLoaderMessage("Please ensure you are using the latest version of all mods and the Modding API.\n\n");
+                LogLoaderWarning("This is likely due to a mod or the Modding API being out of date. ");
+                LogLoaderWarning("Please ensure you are using the latest version of all mods and the Modding API.");
             }
-
-            Console.ForegroundColor = oldColor;
         }
     }
 
-    public static void LogMessage(string message)
-    {
-        if (logOverride == null)
-        {
-            _cachedLogMessageMethod!.Invoke(message);
-        }
-        else
-        {
-            logOverride.Invoke(message);
-        }
-    }
+    /// <summary>Logs a line with no source tag.</summary>
+    public static void LogMessage(string message) => Logging.Write(null, null, LogLevel.Info, message);
 
-    public static void LogLoaderMessage(string message)
-    {
-        LogMessage($"[LOADER] {message}");
-    }
+    /// <summary>Logs a line tagged with <paramref name="source"/>, e.g. a library's own name.</summary>
+    public static void Log(string source, string message, LogLevel level = LogLevel.Info) =>
+        Logging.Write(source, Logging.ColorFor(source, null), level, message);
 
-    public static void LogLoaderWarning(string message)
-    {
-        ConsoleColor oldColor = Console.ForegroundColor;
-        Console.ForegroundColor = ConsoleColor.Yellow;
-        LogMessage($"[LOADER] {message}");
-        Console.ForegroundColor = oldColor;
-    }
+    /// <summary>Logs a line for a mod, tagged with its name and colored with its log color.</summary>
+    public static void Log(Mod mod, string message, LogLevel level = LogLevel.Info) =>
+        Logging.Write(mod.Name, mod.LogColor, level, message);
+
+    public static void LogLoaderDebug(string message) =>
+        Logging.Write("LOADER", Logging.LoaderSourceColor, LogLevel.Debug, message);
+
+    public static void LogLoaderMessage(string message) =>
+        Logging.Write("LOADER", Logging.LoaderSourceColor, LogLevel.Info, message);
+
+    public static void LogLoaderWarning(string message) =>
+        Logging.Write("LOADER", Logging.LoaderSourceColor, LogLevel.Warning, message);
+
+    public static void LogLoaderError(string message) =>
+        Logging.Write("LOADER", Logging.LoaderSourceColor, LogLevel.Error, message);
 
     private static void LoadLibraries()
     {
@@ -158,7 +211,9 @@ public static class ModLoader
                 continue;
             }
 
-            ctx.ModInfo.Add(id, new ModInfo(main, id, name, dependencies));
+            string? logColor = obj["logColor"] is JsonValue colorValue && colorValue.TryGetValue(out string? c) ? c : null;
+
+            ctx.ModInfo.Add(id, new ModInfo(main, id, name, dependencies, logColor));
         }
 
         Dictionary<string, string> modsMissingDependencies = [];
@@ -210,7 +265,8 @@ public static class ModLoader
         LoadedAssemblies = ctx.Assemblies;
     }
 
-    private static void LoadDependents(string[] mods, ModLoadContext ctx) {
+    private static void LoadDependents(string[] mods, ModLoadContext ctx)
+    {
         foreach (string i in mods)
         {
             LogLoaderMessage($"Loading Mod {i}");
@@ -324,6 +380,7 @@ public static class ModLoader
         mod.Name = modInfo.Name;
         mod.Id = modInfo.Id;
         mod.Dependencies = modInfo.Dependencies;
+        mod.LogColor = Logging.ColorFor(modInfo.Id, modInfo.LogColor);
         return mod;
     }
 
@@ -357,4 +414,4 @@ internal class ModLoadContext
     public readonly Dictionary<string, string[]> Dependents = [];
 }
 
-internal record ModInfo(string AssemblyPath, string Id, string Name, string[] Dependencies);
+internal record ModInfo(string AssemblyPath, string Id, string Name, string[] Dependencies, string? LogColor);
