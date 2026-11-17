@@ -6,36 +6,85 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  build-dll:
-    permissions:
-      contents: write
+  build-release:
     runs-on: windows-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-
-      - name: Integrate vcpkg with MSBuild
-        run: vcpkg integrate install
-        shell: cmd
-
-      - name: Build DLL
-        run: msbuild mod-loader.sln /p:Configuration=Release /p:Platform=x64
+      # A tag like v2.1.0 must match MOD_LOADER_VERSION_* in mod_loader.h.
+      - name: Check version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          $header = Get-Content mod-loader-initializer/mod_loader.h -Raw
+          $version = ('MAJOR', 'MINOR', 'PATCH' | ForEach-Object {
+            [regex]::Match($header, "MOD_LOADER_VERSION_$_\s+(\d+)").Groups[1].Value
+          }) -join '.'
+          if ("v$version" -ne $env:GITHUB_REF_NAME) {
+            Write-Error "Tag $env:GITHUB_REF_NAME doesn't match version $version in mod_loader.h"
+            exit 1
+          }
         shell: pwsh
 
-      - name: Upload artifacts (for testing)
+      # The C++ project links nethost from the .NET 8 SDK's packs folder.
+      - name: Set up .NET 8 SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v3
+
+      # The runner has vcpkg preinstalled; the C++ project installs nlohmann-json from vcpkg.json.
+      - name: Integrate vcpkg with MSBuild
+        run: '& "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" integrate install'
+        shell: pwsh
+
+      - name: Build solution
+        run: msbuild mod-loader.sln -restore -m -p:Configuration=Release -p:Platform=x64
+        shell: pwsh
+
+      # The build runs package.bat itself (see mod-loader.vcxproj); this covers a project without that step.
+      - name: Package
+        run: if not exist output\mio-mod-loader\MioModLoader.dll call package.bat
+        shell: cmd
+
+      # package.bat only fails if its last command does, so check every file it should have copied.
+      - name: Check package
+        run: |
+          $expected = @(
+            'output/winhttp.dll',
+            'output/INSTALL.txt',
+            'output/mio-mod-loader/MioModLoader.dll',
+            'output/mio-mod-loader/MioModLoader.runtimeconfig.json',
+            'output/mio-mod-loader/PolyHook2.Net.dll',
+            'output/mio-mod-loader/MioBinds.dll',
+            'output/mio-mod-loader/runtimes/win-x64'
+          )
+          $missing = $expected | Where-Object { -not (Test-Path $_) }
+          if ($missing) { Write-Error "Missing from output: $($missing -join ', ')"; exit 1 }
+        shell: pwsh
+
+      # The zip holds output's contents, so users extract it straight into the game folder.
+      # PowerShell 7 (pwsh) writes forward-slash paths, which Linux extractors need.
+      - name: Zip package
+        id: zip
+        run: |
+          $name = "MioModLoader-$($env:GITHUB_REF_NAME -replace '[\\/]', '-')"
+          Compress-Archive -Path output/* -DestinationPath "$name.zip"
+          "name=$name" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Upload build (for testing)
         uses: actions/upload-artifact@v4
         with:
-          name: build-output
-          path: |
-            x64/Release/winhttp.dll
+          name: ${{ steps.zip.outputs.name }}
+          path: output/
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -44,4 +93,5 @@ jobs:
           draft: true
           generate_release_notes: true
           files: |
-            x64/Release/winhttp.dll
+            ${{ steps.zip.outputs.name }}.zip
+            output/mio-mod-loader/MioModLoader.dll

@@ -6,27 +6,59 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
 
 jobs:
   build-check:
-    permissions:
-      contents: write
     runs-on: windows-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+      # The C++ project links nethost from the .NET 8 SDK's packs folder.
+      - name: Set up .NET 8 SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
 
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v3
 
+      # The runner has vcpkg preinstalled; the C++ project installs nlohmann-json from vcpkg.json.
       - name: Integrate vcpkg with MSBuild
-        run: vcpkg integrate install
+        run: '& "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" integrate install'
+        shell: pwsh
+
+      - name: Build solution
+        run: msbuild mod-loader.sln -restore -m -p:Configuration=Release -p:Platform=x64
+        shell: pwsh
+
+      # The build runs package.bat itself (see mod-loader.vcxproj); this covers a project without that step.
+      - name: Package
+        run: if not exist output\mio-mod-loader\MioModLoader.dll call package.bat
         shell: cmd
 
-      - name: Build DLL
-        run: msbuild mod-loader.sln /p:Configuration=Release /p:Platform=x64
+      # package.bat only fails if its last command does, so check every file it should have copied.
+      - name: Check package
+        run: |
+          $expected = @(
+            'output/winhttp.dll',
+            'output/INSTALL.txt',
+            'output/mio-mod-loader/MioModLoader.dll',
+            'output/mio-mod-loader/MioModLoader.runtimeconfig.json',
+            'output/mio-mod-loader/PolyHook2.Net.dll',
+            'output/mio-mod-loader/MioBinds.dll',
+            'output/mio-mod-loader/runtimes/win-x64'
+          )
+          $missing = $expected | Where-Object { -not (Test-Path $_) }
+          if ($missing) { Write-Error "Missing from output: $($missing -join ', ')"; exit 1 }
         shell: pwsh
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: mio-mod-loader-${{ github.sha }}
+          path: output/
+          retention-days: 14

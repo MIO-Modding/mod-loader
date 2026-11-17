@@ -1,4 +1,4 @@
-rd /s /q output
+if exist output rd /s /q output
 md output
 copy /y "%cd%\bin\Release\x64\winhttp.dll" "output"
 md %cd%\output\mio-mod-loader

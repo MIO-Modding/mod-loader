@@ -180,6 +180,15 @@
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <ImportGroup Label="ExtensionTargets">
+    <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+  <PropertyGroup>
+    <!-- Always hand the build to MSBuild, so packaging runs even when only the C# project changed. -->
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
+  </PropertyGroup>
+  <!-- Runs package.bat after a Release x64 build. This project builds after MioModLoader (it references
+       it), so both outputs exist by now. -->
+  <Target Name="Package" AfterTargets="Build" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Exec Command="call package.bat" WorkingDirectory="$(MSBuildThisFileDirectory).." />
+  </Target>
 </Project>
