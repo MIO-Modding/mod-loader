@@ -54,7 +54,7 @@ jobs:
         run: if not exist output\mio-mod-loader\MioModLoader.dll call package.bat
         shell: cmd
 
-      # package.bat only fails if its last command does, so check every file it should have copied.
+      # package.bat only fails if its last command does, so check every file the package should have.
       - name: Check package
         run: |
           $expected = @(
@@ -64,7 +64,9 @@ jobs:
             'output/mio-mod-loader/MioModLoader.runtimeconfig.json',
             'output/mio-mod-loader/PolyHook2.Net.dll',
             'output/mio-mod-loader/MioBinds.dll',
-            'output/mio-mod-loader/runtimes/win-x64'
+            'output/mio-mod-loader/runtimes/win-x64',
+            'output/mio-mod-loader/dotnet/host/fxr',
+            'output/mio-mod-loader/dotnet/shared/Microsoft.NETCore.App'
           )
           $missing = $expected | Where-Object { -not (Test-Path $_) }
           if ($missing) { Write-Error "Missing from output: $($missing -join ', ')"; exit 1 }

@@ -125,6 +125,32 @@ static void SetUpConsole(bool rich, bool gameLogs) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// .NET runtime
+//
+// Releases ship their own copy of the .NET runtime in mio-mod-loader/dotnet, so
+// players don't have to install .NET, on Windows or in Proton's prefix. Without
+// that folder (e.g. a local build), an installed runtime is used, as before.
+// ---------------------------------------------------------------------------
+
+static bool IsRunningUnderWine() {
+	HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+	return ntdll && GetProcAddress(ntdll, "wine_get_version") != nullptr;
+}
+
+static void ShowDotNetError() {
+	const char* message = IsRunningUnderWine()
+		? "MIO Mod Loader couldn't start .NET, so mods won't load.\n\n"
+		"Reinstall the mod loader, making sure the mio-mod-loader\\dotnet folder is included. "
+		"Or install .NET 8 into Proton's prefix with:\n\n"
+		"protontricks 1672810 dotnet8"
+		: "MIO Mod Loader couldn't start .NET, so mods won't load.\n\n"
+		"Reinstall the mod loader, making sure the mio-mod-loader\\dotnet folder is included. "
+		"Or install the .NET 8 Runtime (x64) from:\n\n"
+		"https://dotnet.microsoft.com/download/dotnet/8.0";
+	MessageBoxA(nullptr, message, "MIO Mod Loader", MB_OK | MB_ICONERROR);
+}
+
 bool IsTargetExecutable() {
 	char path[MAX_PATH];
 	if (!GetModuleFileNameA(nullptr, path, MAX_PATH)) {
@@ -304,18 +330,37 @@ void InitializeModLoader() {
 	fs::path configPath = fs::current_path() / "mio-mod-loader" / "MioModLoader.runtimeconfig.json";
 	fs::path assemblyPath = fs::current_path() / "mio-mod-loader" / "MioModLoader.dll";
 
+	// Use the runtime shipped with the loader if it's there, otherwise an installed one.
+	fs::path bundledDotNet = fs::current_path() / "mio-mod-loader" / "dotnet";
+	bool useBundled = fs::exists(bundledDotNet / "host" / "fxr");
+
+	get_hostfxr_parameters hostfxrParams{ sizeof(get_hostfxr_parameters), assemblyPath.c_str(), bundledDotNet.c_str() };
 	char_t buffer[MAX_PATH];
 	size_t bufferSize = sizeof(buffer) / sizeof(char_t);
-	get_hostfxr_path(buffer, &bufferSize, nullptr);
+	HMODULE lib = nullptr;
+	if (get_hostfxr_path(buffer, &bufferSize, useBundled ? &hostfxrParams : nullptr) == 0) {
+		lib = LoadLibraryW(buffer);
+	}
 
-	HMODULE lib = LoadLibraryW(buffer);
-	auto initFptr = (hostfxr_initialize_for_runtime_config_fn)GetProcAddress(lib, "hostfxr_initialize_for_runtime_config");
-	auto getDelegateFptr = (hostfxr_get_runtime_delegate_fn)GetProcAddress(lib, "hostfxr_get_runtime_delegate");
-	auto closeFptr = (hostfxr_close_fn)GetProcAddress(lib, "hostfxr_close");
+	auto initFptr = lib ? (hostfxr_initialize_for_runtime_config_fn)GetProcAddress(lib, "hostfxr_initialize_for_runtime_config") : nullptr;
+	auto getDelegateFptr = lib ? (hostfxr_get_runtime_delegate_fn)GetProcAddress(lib, "hostfxr_get_runtime_delegate") : nullptr;
+	auto closeFptr = lib ? (hostfxr_close_fn)GetProcAddress(lib, "hostfxr_close") : nullptr;
+	if (!initFptr || !getDelegateFptr || !closeFptr) {
+		NativeLog(useBundled ? "Couldn't load the bundled .NET runtime." : "Couldn't find an installed .NET runtime.");
+		ShowDotNetError();
+		return;
+	}
+	NativeLog(useBundled ? "Using the bundled .NET runtime." : "Using the installed .NET runtime.");
+
+	hostfxr_initialize_parameters initParams{ sizeof(hostfxr_initialize_parameters), nullptr, bundledDotNet.c_str() };
 	hostfxr_handle ctx = nullptr;
-	int rc = initFptr(configPath.c_str(), nullptr, &ctx);
+	int rc = initFptr(configPath.c_str(), useBundled ? &initParams : nullptr, &ctx);
 	if (rc != 0 || ctx == nullptr) {
-		NativeLog("Failed to initialize hostfxr");
+		char error[64];
+		snprintf(error, sizeof(error), "Failed to initialize .NET (error 0x%08X).", (unsigned)rc);
+		NativeLog(error);
+		if (ctx != nullptr) closeFptr(ctx);
+		ShowDotNetError();
 		return;
 	}
 
