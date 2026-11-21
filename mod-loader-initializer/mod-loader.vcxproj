@@ -186,9 +186,12 @@
     <!-- Always hand the build to MSBuild, so packaging runs even when only the C# project changed. -->
     <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
   </PropertyGroup>
-  <!-- Runs package.bat after a Release x64 build. This project builds after MioModLoader (it references
+  <!-- Runs package.bat and bundle-dotnet.bat after a Release x64 build. This project builds after MioModLoader (it references
        it), so both outputs exist by now. -->
-  <Target Name="Package" AfterTargets="Build" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Target Name="Package" AfterTargets="Build" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Exec Command="call package.bat" WorkingDirectory="$(MSBuildThisFileDirectory).." />
+    <!-- Adds the .NET runtime the way releases ship it. A warning, not an error, if it fails (e.g. offline):
+         the loader then uses an installed .NET. CI runs it again as its own step, where failing stops the build. -->
+    <Exec Command="call bundle-dotnet.bat" WorkingDirectory="$(MSBuildThisFileDirectory).." ContinueOnError="true" />
   </Target>
 </Project>
