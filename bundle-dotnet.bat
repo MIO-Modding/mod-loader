@@ -1,5 +1,8 @@
 @echo off
 setlocal
+rem PowerShell 7 (e.g. a GitHub Actions pwsh step) passes on its module path, which makes Windows
+rem PowerShell load PowerShell 7's modules and fail. Without it, Windows PowerShell uses its defaults.
+set "PSModulePath="
 rem Adds the .NET runtime to the packaged loader, the way releases ship it.
 rem Run it after building (once package.bat has created output\). Downloads are kept
 rem in %TEMP%, so running it again after a rebuild doesn't download again.
